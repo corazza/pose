@@ -1,6 +1,7 @@
 import numpy as np
 import IPython
 
+from const import *
 
 NUI_SKELETON_POSITION_HIP_CENTER = 0
 NUI_SKELETON_POSITION_SPINE = 1
@@ -79,15 +80,14 @@ nui_skeleton_conn = [
     (ANKLE_RIGHT, FOOT_RIGHT),
 ]
 
-A = np.zeros((20, 20))
-A[0, 0]
 
-for (i, j) in nui_skeleton_conn:
-    A[i, j] = 1
-    A[j, i] = 1
+def get_A(T: int) -> np.ndarray:
+    A = np.zeros((JOINTS, JOINTS))
 
-A += np.identity(20)
+    for (i, j) in nui_skeleton_conn:
+        A[i, j] = 1
+        A[j, i] = 1
 
+    A += np.identity(JOINTS)
 
-def get_A() -> np.ndarray:
-    return A
+    return np.tile(A, (T, T))

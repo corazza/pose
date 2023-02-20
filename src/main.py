@@ -10,9 +10,7 @@ import scipy
 import torch
 from sklearn.model_selection import train_test_split
 
-
-JOINTS = 20
-GESTURES = 12
+from const import *
 
 
 def to_gesture_id(gesture: str) -> int:
@@ -73,10 +71,10 @@ def extract_label(Y: np.ndarray) -> np.ndarray:
 
 def split(timestamps: np.ndarray, X: np.ndarray, Y: np.ndarray) -> list[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
     row_indices = np.where(np.any(Y == 1, axis=1))[0]
-    # distances = [int(abs(row_indices[i+1] - row_indices[i]) / 2)
+    # distances = [abs(row_indices[i+1] - row_indices[i])
     #              for i in range(len(row_indices)-1)]
-    # min_cover = min(distances)
-    min_cover = 32
+    # min_cover = min(distances)/2
+    min_cover = int(WINDOW/2)
     Xs = []
     Ys = []
     Ts = []
@@ -85,7 +83,7 @@ def split(timestamps: np.ndarray, X: np.ndarray, Y: np.ndarray) -> list[Tuple[np
         b = center + min_cover
         if a < 0 or b > X.shape[0]:
             continue
-        Xs.append(X[a:b, :, :])
+        Xs.append(X[a:b, :])
         Ys.append(Y[a:b, :])
         Ts.append(timestamps[a:b])
     return Ts, Xs, Ys
@@ -126,7 +124,7 @@ def main():
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.3, random_state=42)
 
-    a = graph.get_A()
+    a = graph.get_A(WINDOW)
     lap = scipy.sparse.csgraph.laplacian(a, normed=True)
     IPython.embed()
 
