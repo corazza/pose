@@ -14,6 +14,7 @@ from torch.nn import Linear, ReLU
 from torch_geometric.data import Data
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
+from torch_geometric.loader import DataLoader
 
 from const import *
 
@@ -135,6 +136,10 @@ class GCN(torch.nn.Module):
 
 
 def main():
+    a = torch.tensor(graph.get_A(WINDOW))
+    # lap = scipy.sparse.csgraph.laplacian(a, normed=True)
+    edge_index = a.nonzero().t().contiguous()
+
     all = list(examples(Path('MicrosoftGestureDataset-RC/data')))
     Ts = list(map(lambda triplet: torch.tensor(triplet[0]), all))
     Xs = list(map(lambda triplet: torch.tensor(triplet[1]), all))
@@ -143,40 +148,31 @@ def main():
     Xs = list(map(lambda x: x.reshape(
         (x.shape[0]*x.shape[1], x.shape[2])), Xs))
 
-    X = torch.stack(Xs)
-    y = torch.stack(ys)
+    data_list = []
+    for X, y in zip(Xs, ys):
+        mean = X.mean(dim=0, keepdim=True)
+        std = X.std(dim=0, keepdim=True)
+        X = (X - mean) / (std + 1e-6)
+        data = Data(x=X.float(), y=y.long(), edge_index=edge_index.long())
+        data_list.append(data)
 
-    mean = X.mean(dim=0, keepdim=True)
-    std = X.std(dim=0, keepdim=True)
-    # add small constant to avoid division by zero
-    X = (X - mean) / (std + 1e-6)
-
-    X = X[:50]
-    y = y[:50]
-
-    # X_train, X_test, y_train, y_test = train_test_split(
-    #     X, y, test_size=0.3, random_state=42)
-
-    a = torch.tensor(graph.get_A(WINDOW))
-    # lap = scipy.sparse.csgraph.laplacian(a, normed=True)
-
-    edge_index = a.nonzero().t().contiguous()
-
-    data = Data(x=X.float(), y=y.long(), edge_index=edge_index.long())
+    loader = DataLoader(data_list, batch_size=32)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = GCN().to(device)
-    data = data.to(device)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=0.01, weight_decay=5e-4)
     model.train()
 
     for epoch in range(200):
-        optimizer.zero_grad()
-        out = model(data)
-        loss = F.nll_loss(out, data.y)
-        loss.backward()
-        optimizer.step()
+        for batch in loader:
+            batch.to(device)
+            optimizer.zero_grad()
+            out = model(batch)
+            IPython.embed()
+            loss = F.nll_loss(out, batch.y)
+            loss.backward()
+            optimizer.step()
 
     graph_pred = torch.mean(out, dim=1)
     predicted_class = graph_pred.argmax(dim=-1)
