@@ -43,7 +43,7 @@ def main():
     torch.manual_seed(const.SEED)
     name = sys.argv[1]
     model, _mean_std = ourmodel.get_model(name)
-    loader, val_loader, mean, std = ourdata.get_data()
+    loader, val_loader, mean, std, edge_index = ourdata.get_data()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)

@@ -14,33 +14,6 @@ from torch_geometric.nn import Sequential, GCNConv
 import const
 
 
-class GCN(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.conv1 = GCNConv(const.FEATURES, 32)
-        self.conv2 = GCNConv(32, 16)
-        self.sum_aggr = aggr.MeanAggregation()
-        self.fc1 = torch.nn.Linear(16, const.GESTURES)
-        # self.fc2 = torch.nn.Linear(16, const.GESTURES)
-        # mean and std added so they get saved in the model
-        self.mean = None
-        self.std = None
-
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-
-        x = self.conv1(x, edge_index)
-        x = F.relu(x)
-        x = F.dropout(x, training=self.training)
-        x = self.conv2(x, edge_index)
-        x = F.relu(x)
-        x = self.sum_aggr(x, ptr=data.ptr)
-        x = self.fc1(x)
-        # x = self.fc2(x)
-
-        return F.log_softmax(x, dim=1)
-
-
 def get_paths(name: str, last: bool):
     if last:
         model_path = Path(f'models/{name}_last.pt')
@@ -50,18 +23,21 @@ def get_paths(name: str, last: bool):
     return model_path, norm_path
 
 
-def get_model(name: str):
+def get_model(name: str, hidden: int = None):
     model_path, norm_path = get_paths(name, False)
+    if hidden == None:
+        mean_std = torch.load(norm_path)
+        hidden = mean_std['hidden']
     model = Sequential('x, edge_index, batch', [
         (Dropout(p=0.5), 'x -> x'),
-        (GCNConv(const.FEATURES, const.N_HIDDEN), 'x, edge_index -> x1'),
+        (GCNConv(const.FEATURES, hidden), 'x, edge_index -> x1'),
         ReLU(inplace=True),
-        (GCNConv(const.N_HIDDEN, const.N_HIDDEN), 'x1, edge_index -> x2'),
+        (GCNConv(hidden, hidden), 'x1, edge_index -> x2'),
         ReLU(inplace=True),
         (lambda x1, x2: [x1, x2], 'x1, x2 -> xs'),
-        (JumpingKnowledge("cat", const.N_HIDDEN, num_layers=2), 'xs -> x'),
+        (JumpingKnowledge("cat", hidden, num_layers=2), 'xs -> x'),
         (global_mean_pool, 'x, batch -> x'),
-        Linear(2 * const.N_HIDDEN, const.GESTURES),
+        Linear(2 * hidden, const.GESTURES),
         LogSoftmax(dim=1)
     ])
     if os.path.isfile(model_path):
@@ -74,9 +50,9 @@ def get_model(name: str):
     return model, mean_std
 
 
-def save(name, model, mean, std, last=False):
+def save(name, model, mean, std, hidden, last=False):
     model_path, norm_path = get_paths(name, last)
-    mean_std = {'mean': mean, 'std': std}
-    torch.save(mean_std, norm_path)
+    info = {'mean': mean, 'std': std, 'hidden': hidden}
+    torch.save(info, norm_path)
     torch.save(model.state_dict(), model_path)
     print(f'saved model to {model_path.resolve()}')

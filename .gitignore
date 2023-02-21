@@ -171,3 +171,6 @@ ASDFmodel
 
 # !model2.pt
 # !mean_std2.pt
+
+*.mp4
+*Zone.Identifier

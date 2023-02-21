@@ -115,7 +115,7 @@ def examples(dir: str) -> Generator[Tuple[np.ndarray, np.ndarray, np.ndarray], N
 
 def get_data():
     a = torch.tensor(ourgraph.get_A(const.WINDOW))
-    edge_index = a.nonzero().t().contiguous()
+    edge_index = a.nonzero().t().contiguous().long()
 
     all = list(examples('MicrosoftGestureDataset-RC/data'))
     Ts = list(map(lambda triplet: torch.tensor(triplet[0]), all))
@@ -150,4 +150,4 @@ def get_data():
     mean = torch.mean(total_values, dim=0)
     std = torch.std(total_values, dim=0)
 
-    return loader, val_loader, mean, std
+    return loader, val_loader, mean, std, edge_index
