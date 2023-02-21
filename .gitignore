@@ -166,6 +166,7 @@ ASDFmodel
 *.pt
 
 !/models/8_model_64_window*
+!/models/16_model_64_window*
 
 # !model2.pt
 # !mean_std2.pt

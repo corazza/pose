@@ -66,7 +66,7 @@ def main():
         if accuracy > max_accuracy:
             ourmodel.save(name, model, mean, std)
             max_accuracy = accuracy
-    ourmodel.save(name, model, mean, std)
+    ourmodel.save(name, model, mean, std, last=True)
 
 
 if __name__ == '__main__':

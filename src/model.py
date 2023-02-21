@@ -41,14 +41,17 @@ class GCN(torch.nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def get_paths(name: str):
-    model_path = Path(f'models/{name}.pt')
+def get_paths(name: str, last: bool):
+    if last:
+        model_path = Path(f'models/{name}_last.pt')
+    else:
+        model_path = Path(f'models/{name}.pt')
     norm_path = Path(f'models/{name}_norm.pt')
     return model_path, norm_path
 
 
 def get_model(name: str):
-    model_path, norm_path = get_paths(name)
+    model_path, norm_path = get_paths(name, False)
     model = Sequential('x, edge_index, batch', [
         (Dropout(p=0.5), 'x -> x'),
         (GCNConv(const.FEATURES, const.N_HIDDEN), 'x, edge_index -> x1'),
@@ -71,8 +74,8 @@ def get_model(name: str):
     return model, mean_std
 
 
-def save(name, model, mean, std):
-    model_path, norm_path = get_paths(name)
+def save(name, model, mean, std, last=False):
+    model_path, norm_path = get_paths(name, last)
     mean_std = {'mean': mean, 'std': std}
     torch.save(mean_std, norm_path)
     torch.save(model.state_dict(), model_path)
