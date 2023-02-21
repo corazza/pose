@@ -172,15 +172,16 @@ def main():
         data_list, [train_size, test_size])
 
     loader = DataLoader(train_dataset, batch_size=BATCH_SIZE)
+    val_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = GCN().to(device)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=0.01, weight_decay=5e-4)
-    model.train()
 
     for epoch in range(200):
         print(epoch)
+        model.train()
         for batch in loader:
             batch.to(device)
             optimizer.zero_grad()
@@ -188,6 +189,16 @@ def main():
             loss = F.nll_loss(out, batch.y)
             loss.backward()
             optimizer.step()
+
+        losses = []
+        for batch in val_loader:
+            batch.to(device)
+            with torch.no_grad():
+                model.eval()
+                out = model(batch)
+                val_loss = F.nll_loss(out, batch.y)
+                losses.append(val_loss.item())
+        print(sum(losses)/len(losses))
 
 
 if __name__ == '__main__':
