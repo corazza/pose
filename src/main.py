@@ -146,7 +146,6 @@ class GCN(torch.nn.Module):
 
 def main():
     a = torch.tensor(graph.get_A(WINDOW))
-    # lap = scipy.sparse.csgraph.laplacian(a, normed=True)
     edge_index = a.nonzero().t().contiguous()
 
     all = list(examples(Path('MicrosoftGestureDataset-RC/data')))
@@ -189,11 +188,6 @@ def main():
             loss = F.nll_loss(out, batch.y)
             loss.backward()
             optimizer.step()
-
-    graph_pred = torch.mean(out, dim=1)
-    predicted_class = graph_pred.argmax(dim=-1)
-
-    IPython.embed()
 
 
 if __name__ == '__main__':
