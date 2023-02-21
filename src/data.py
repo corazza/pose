@@ -1,24 +1,16 @@
-from torch_geometric.nn import Sequential, GCNConv
+import IPython
 import os
 import csv
 from pathlib import Path
 from typing import Generator, Tuple
-import numpy as np
-import IPython
 import re
-import graph
-import scipy
+import numpy as np
 import torch
-from sklearn.model_selection import train_test_split
-from torch.nn import Linear, ReLU
 from torch_geometric.data import Data
-import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
 from torch_geometric.loader import DataLoader
-from torch_geometric.nn import global_mean_pool
-from torch_geometric.nn import aggr
 
 import const
+import graph as ourgraph
 
 
 def to_gesture_id(gesture: str) -> int:
@@ -108,7 +100,8 @@ def load_file(datapoints: Path, tagstream: Path) -> Generator[Tuple[np.ndarray, 
         yield T, X, Y
 
 
-def examples(dir: Path) -> Generator[Tuple[np.ndarray, np.ndarray, np.ndarray], None, None]:
+def examples(dir: str) -> Generator[Tuple[np.ndarray, np.ndarray, np.ndarray], None, None]:
+    dir = Path(dir)
     for file_path in dir.iterdir():
         if file_path.is_file():
             if '.tagstream' in str(file_path):
@@ -120,85 +113,11 @@ def examples(dir: Path) -> Generator[Tuple[np.ndarray, np.ndarray, np.ndarray], 
             yield from load_file(data_path, tagstream_path)
 
 
-class GCN(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.conv1 = GCNConv(const.FEATURES, 32)
-        self.conv2 = GCNConv(32, 32)
-        self.sum_aggr = aggr.MeanAggregation()
-        self.fc1 = torch.nn.Linear(32, 16)
-        self.fc2 = torch.nn.Linear(16, const.GESTURES)
-        # mean and std added so they get saved in the model
-        self.mean = None
-        self.std = None
-
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-
-        x = self.conv1(x, edge_index)
-        x = F.relu(x)
-        x = F.dropout(x, training=self.training)
-        x = self.conv2(x, edge_index)
-        x = F.relu(x)
-        x = self.sum_aggr(x, ptr=data.ptr)
-        x = self.fc1(x)
-        x = self.fc2(x)
-
-        return F.log_softmax(x, dim=1)
-
-
-def save(path, path_norm, model, mean, std):
-    mean_std = {'mean': mean, 'std': std}
-    torch.save(mean_std, path_norm)
-    torch.save(model.state_dict(), path)
-    print(f'saved model to {path.resolve()}')
-
-
-def normalize(batch, mean, std):
-    X = batch.x
-    X = (X - mean) / (std + 1e-6)
-    batch.x = X
-    return batch
-
-
-def evaluate(epoch, device, model, val_loader):
-    model.eval()
-    losses = []
-    correct_preds = []
-    for batch in val_loader:
-        batch = normalize(batch, model.mean, model.std)
-        batch.to(device)
-        with torch.no_grad():
-            out = model(batch)
-            pred = torch.argmax(out, dim=-1)
-            val_loss = F.nll_loss(out, batch.y)
-            losses.append(val_loss.item())
-            num_correct = torch.sum(pred == batch.y).item()
-            correct_preds.append(num_correct)
-    avg_loss = sum(losses)/len(losses)
-    accuracy = sum(correct_preds) / (len(correct_preds)*const.BATCH_SIZE)
-
-    print(
-        f'accuracy={accuracy}, avg_loss={avg_loss}, epoch={epoch+1}/{const.EPOCHS}')
-
-
-def main():
-    torch.manual_seed(const.SEED)
-    save_path = Path('model2.pt')
-    save_path_norm = Path('mean_std2.pt')
-
-    if os.path.isfile(save_path):
-        model = GCN()
-        model.load_state_dict(torch.load(save_path))
-        print(f'loaded model from {save_path.resolve()}')
-    else:
-        model = GCN()
-        print(f'created new model')
-
-    a = torch.tensor(graph.get_A(const.WINDOW))
+def get_data():
+    a = torch.tensor(ourgraph.get_A(const.WINDOW))
     edge_index = a.nonzero().t().contiguous()
 
-    all = list(examples(Path('MicrosoftGestureDataset-RC/data')))
+    all = list(examples('MicrosoftGestureDataset-RC/data'))
     Ts = list(map(lambda triplet: torch.tensor(triplet[0]), all))
     Xs = list(map(lambda triplet: torch.tensor(triplet[1]), all))
     ys = list(map(lambda triplet: torch.tensor(triplet[2]), all))
@@ -228,32 +147,7 @@ def main():
         values = batch.x.view(batch.num_nodes, -1)
         total_values.append(values)
     total_values = torch.cat(total_values, dim=0)
-    model.mean = torch.mean(total_values, dim=0)
-    model.std = torch.std(total_values, dim=0)
+    mean = torch.mean(total_values, dim=0)
+    std = torch.std(total_values, dim=0)
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
-    optimizer = torch.optim.Adam(
-        model.parameters(), lr=0.01, weight_decay=5e-4)
-
-    evaluate(-1, device, model, val_loader)
-    print(f'running for {const.EPOCHS} epochs')
-    for epoch in range(const.EPOCHS):
-        model.train()
-        for batch in loader:
-            batch = normalize(batch, model.mean, model.std)
-            batch.to(device)
-            optimizer.zero_grad()
-            out = model(batch)
-            loss = F.nll_loss(out, batch.y)
-            loss.backward()
-            optimizer.step()
-        evaluate(epoch, device, model, val_loader)
-        if (epoch+1) % const.SAVE_EVERY == 0:
-            save(save_path, save_path_norm, model, model.mean, model.std)
-
-    save(save_path, save_path_norm, model, model.mean, model.std)
-
-
-if __name__ == '__main__':
-    main()
+    return loader, val_loader, mean, std

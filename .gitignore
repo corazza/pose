@@ -164,3 +164,8 @@ cython_debug/
 ASDFmodel
 *.pytorchmodel
 *.pt
+
+!/models/8_model_64_window*
+
+# !model2.pt
+# !mean_std2.pt
