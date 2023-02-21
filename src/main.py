@@ -128,6 +128,9 @@ class GCN(torch.nn.Module):
         self.sum_aggr = aggr.MeanAggregation()
         self.fc1 = torch.nn.Linear(32, 16)
         self.fc2 = torch.nn.Linear(16, const.GESTURES)
+        # mean and std added so they get saved in the model
+        self.mean = None
+        self.std = None
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
@@ -144,14 +147,54 @@ class GCN(torch.nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def save(path, model):
-    print(f'saving model to {path.resolve()}')
+def save(path, path_norm, model, mean, std):
+    mean_std = {'mean': mean, 'std': std}
+    torch.save(mean_std, path_norm)
     torch.save(model.state_dict(), path)
+    print(f'saved model to {path.resolve()}')
+
+
+def normalize(batch, mean, std):
+    X = batch.x
+    X = (X - mean) / (std + 1e-6)
+    batch.x = X
+    return batch
+
+
+def evaluate(epoch, device, model, val_loader):
+    model.eval()
+    losses = []
+    correct_preds = []
+    for batch in val_loader:
+        batch = normalize(batch, model.mean, model.std)
+        batch.to(device)
+        with torch.no_grad():
+            out = model(batch)
+            pred = torch.argmax(out, dim=-1)
+            val_loss = F.nll_loss(out, batch.y)
+            losses.append(val_loss.item())
+            num_correct = torch.sum(pred == batch.y).item()
+            correct_preds.append(num_correct)
+    avg_loss = sum(losses)/len(losses)
+    accuracy = sum(correct_preds) / (len(correct_preds)*const.BATCH_SIZE)
+
+    print(
+        f'accuracy={accuracy}, avg_loss={avg_loss}, epoch={epoch+1}/{const.EPOCHS}')
 
 
 def main():
     torch.manual_seed(const.SEED)
-    save_path = Path('ASDF.pytorchmodel')
+    save_path = Path('model2.pt')
+    save_path_norm = Path('mean_std2.pt')
+
+    if os.path.isfile(save_path):
+        model = GCN()
+        model.load_state_dict(torch.load(save_path))
+        print(f'loaded model from {save_path.resolve()}')
+    else:
+        model = GCN()
+        print(f'created new model')
+
     a = torch.tensor(graph.get_A(const.WINDOW))
     edge_index = a.nonzero().t().contiguous()
 
@@ -167,9 +210,6 @@ def main():
 
     data_list = []
     for X, y in zip(Xs, ys):
-        mean = X.mean(dim=0, keepdim=True)
-        std = X.std(dim=0, keepdim=True)
-        X = (X - mean) / (std + 1e-6)
         data = Data(x=X.float(), y=y.long(), edge_index=edge_index.long())
         data_list.append(data)
 
@@ -178,42 +218,41 @@ def main():
     train_dataset, test_dataset = torch.utils.data.random_split(
         data_list, [train_size, test_size])
 
-    loader = DataLoader(train_dataset, batch_size=const.BATCH_SIZE)
-    val_loader = DataLoader(test_dataset, batch_size=const.BATCH_SIZE)
+    loader = DataLoader(
+        train_dataset, batch_size=const.BATCH_SIZE, shuffle=True)
+    val_loader = DataLoader(
+        test_dataset, batch_size=const.BATCH_SIZE, shuffle=True)
+
+    total_values = []
+    for batch in loader:
+        values = batch.x.view(batch.num_nodes, -1)
+        total_values.append(values)
+    total_values = torch.cat(total_values, dim=0)
+    model.mean = torch.mean(total_values, dim=0)
+    model.std = torch.std(total_values, dim=0)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = GCN().to(device)
+    model = model.to(device)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=0.01, weight_decay=5e-4)
 
+    evaluate(-1, device, model, val_loader)
     print(f'running for {const.EPOCHS} epochs')
-
     for epoch in range(const.EPOCHS):
         model.train()
         for batch in loader:
+            batch = normalize(batch, model.mean, model.std)
             batch.to(device)
             optimizer.zero_grad()
             out = model(batch)
             loss = F.nll_loss(out, batch.y)
             loss.backward()
             optimizer.step()
-
-        losses = []
-        for batch in val_loader:
-            batch.to(device)
-            with torch.no_grad():
-                model.eval()
-                out = model(batch)
-                val_loss = F.nll_loss(out, batch.y)
-                losses.append(val_loss.item())
-        avg_loss = sum(losses)/len(losses)
-
-        print(f'avg_loss={avg_loss}, epoch={epoch+1}/{const.EPOCHS}')
-
+        evaluate(epoch, device, model, val_loader)
         if (epoch+1) % const.SAVE_EVERY == 0:
-            save(save_path, model)
+            save(save_path, save_path_norm, model, model.mean, model.std)
 
-    save(save_path, model)
+    save(save_path, save_path_norm, model, model.mean, model.std)
 
 
 if __name__ == '__main__':
