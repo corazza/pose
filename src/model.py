@@ -16,16 +16,17 @@ import const
 
 def get_paths(name: str, last: bool):
     if last:
-        model_path = Path(f'models/{name}_last.pt')
+        model_path = Path(f'/content/pose/models/{name}_last.pt')
     else:
-        model_path = Path(f'models/{name}.pt')
-    norm_path = Path(f'models/{name}_norm.pt')
+        model_path = Path(f'/content/pose/models/{name}.pt')
+    norm_path = Path(f'/content/pose/models/{name}_norm.pt')
     return model_path, norm_path
 
 
 def get_model(name: str, hidden: int = None):
     model_path, norm_path = get_paths(name, False)
     if hidden == None:
+        print(model_path, norm_path)
         mean_std = torch.load(norm_path)
         hidden = mean_std['hidden']
     model = Sequential('x, edge_index, batch', [

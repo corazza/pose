@@ -35,7 +35,6 @@ def classify():
 
     print(out)
     print(pred)
-    IPython.embed()
 
 
 def evaluate():

@@ -69,7 +69,7 @@ def extract_label(Y: np.ndarray) -> np.ndarray:
     return Y[(Y == 1).any(axis=1)][0]
 
 
-def split(timestamps: np.ndarray, X: np.ndarray, Y: np.ndarray) -> list[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+def split(timestamps: np.ndarray, X: np.ndarray, Y: np.ndarray):
     row_indices = np.where(np.any(Y == 1, axis=1))[0]
     # distances = [abs(row_indices[i+1] - row_indices[i])
     #              for i in range(len(row_indices)-1)]
@@ -117,7 +117,7 @@ def get_data():
     a = torch.tensor(ourgraph.get_A(const.WINDOW))
     edge_index = a.nonzero().t().contiguous().long()
 
-    all = list(examples('MicrosoftGestureDataset-RC/data'))
+    all = list(examples('/content/pose/MicrosoftGestureDataset-RC/data'))
     Ts = list(map(lambda triplet: torch.tensor(triplet[0]), all))
     Xs = list(map(lambda triplet: torch.tensor(triplet[1]), all))
     ys = list(map(lambda triplet: torch.tensor(triplet[2]), all))
