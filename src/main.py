@@ -15,6 +15,8 @@ from torch_geometric.data import Data
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch_geometric.loader import DataLoader
+from torch_geometric.nn import global_mean_pool
+from torch_geometric.nn import aggr
 
 from const import *
 
@@ -122,7 +124,10 @@ class GCN(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.conv1 = GCNConv(FEATURES, 32)
-        self.conv2 = GCNConv(32, GESTURES)
+        self.conv2 = GCNConv(32, 32)
+        self.fc1 = torch.nn.Linear(32, 16)
+        self.fc2 = torch.nn.Linear(16, GESTURES)
+        self.sum_aggr = aggr.MeanAggregation()
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
@@ -131,6 +136,10 @@ class GCN(torch.nn.Module):
         x = F.relu(x)
         x = F.dropout(x, training=self.training)
         x = self.conv2(x, edge_index)
+        x = F.relu(x)
+        x = self.sum_aggr(x, ptr=data.ptr)
+        x = self.fc1(x)
+        x = self.fc2(x)
 
         return F.log_softmax(x, dim=1)
 
@@ -156,7 +165,7 @@ def main():
         data = Data(x=X.float(), y=y.long(), edge_index=edge_index.long())
         data_list.append(data)
 
-    loader = DataLoader(data_list, batch_size=32)
+    loader = DataLoader(data_list, batch_size=BATCH_SIZE)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = GCN().to(device)
@@ -166,6 +175,7 @@ def main():
 
     for epoch in range(200):
         for batch in loader:
+            batch.y = batch.y.reshape((BATCH_SIZE, -1))
             batch.to(device)
             optimizer.zero_grad()
             out = model(batch)
