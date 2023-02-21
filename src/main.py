@@ -157,6 +157,8 @@ def main():
     Xs = list(map(lambda x: x.reshape(
         (x.shape[0]*x.shape[1], x.shape[2])), Xs))
 
+    ys = list(map(lambda y: torch.argmax(y), ys))
+
     data_list = []
     for X, y in zip(Xs, ys):
         mean = X.mean(dim=0, keepdim=True)
@@ -175,11 +177,13 @@ def main():
 
     for epoch in range(200):
         for batch in loader:
-            batch.y = batch.y.reshape((BATCH_SIZE, -1))
+            # try:
+            #     batch.y = batch.y.reshape((BATCH_SIZE))
+            # except:
+            #     IPython.embed()
             batch.to(device)
             optimizer.zero_grad()
             out = model(batch)
-            IPython.embed()
             loss = F.nll_loss(out, batch.y)
             loss.backward()
             optimizer.step()
