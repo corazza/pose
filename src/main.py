@@ -177,10 +177,6 @@ def main():
 
     for epoch in range(200):
         for batch in loader:
-            # try:
-            #     batch.y = batch.y.reshape((BATCH_SIZE))
-            # except:
-            #     IPython.embed()
             batch.to(device)
             optimizer.zero_grad()
             out = model(batch)
