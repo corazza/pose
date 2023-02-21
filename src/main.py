@@ -145,6 +145,8 @@ class GCN(torch.nn.Module):
 
 
 def main():
+    torch.manual_seed(42)
+    save_path = Path('ASDFmodel')
     a = torch.tensor(graph.get_A(WINDOW))
     edge_index = a.nonzero().t().contiguous()
 
@@ -180,7 +182,6 @@ def main():
         model.parameters(), lr=0.01, weight_decay=5e-4)
 
     for epoch in range(200):
-        print(epoch)
         model.train()
         for batch in loader:
             batch.to(device)
@@ -198,7 +199,13 @@ def main():
                 out = model(batch)
                 val_loss = F.nll_loss(out, batch.y)
                 losses.append(val_loss.item())
-        print(sum(losses)/len(losses))
+        avg_loss = sum(losses)/len(losses)
+
+        print(f'avg_loss={avg_loss}, epoch={epoch+1}')
+
+        if (epoch+1) % 10 == 0:
+            print(f'saving model to {save_path.resolve()}')
+            torch.save(model.state_dict(), save_path)
 
 
 if __name__ == '__main__':
