@@ -167,7 +167,12 @@ def main():
         data = Data(x=X.float(), y=y.long(), edge_index=edge_index.long())
         data_list.append(data)
 
-    loader = DataLoader(data_list, batch_size=BATCH_SIZE)
+    train_size = int(0.9 * len(data_list))
+    test_size = len(data_list) - train_size
+    train_dataset, test_dataset = torch.utils.data.random_split(
+        data_list, [train_size, test_size])
+
+    loader = DataLoader(train_dataset, batch_size=BATCH_SIZE)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = GCN().to(device)
@@ -176,6 +181,7 @@ def main():
     model.train()
 
     for epoch in range(200):
+        print(epoch)
         for batch in loader:
             batch.to(device)
             optimizer.zero_grad()
