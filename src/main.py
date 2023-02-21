@@ -1,3 +1,4 @@
+from torch_geometric.nn import Sequential, GCNConv
 import os
 import csv
 from pathlib import Path
@@ -9,6 +10,10 @@ import graph
 import scipy
 import torch
 from sklearn.model_selection import train_test_split
+from torch.nn import Linear, ReLU
+from torch_geometric.data import Data
+import torch.nn.functional as F
+from torch_geometric.nn import GCNConv
 
 from const import *
 
@@ -40,7 +45,7 @@ def load_datapoints(path: Path) -> Tuple[np.ndarray, np.ndarray]:
         keep_cols = np.ones(X.shape[1], dtype=bool)
         keep_cols[3::4] = False
         X = X[:, keep_cols]
-        X = X.reshape(X.shape[0], -1, 3)
+        X = X.reshape(X.shape[0], -1, FEATURES)
         return timestamps.reshape((timestamps.shape[0])), X
 
 
@@ -112,20 +117,70 @@ def examples(dir: Path) -> Generator[Tuple[np.ndarray, np.ndarray, np.ndarray], 
             yield from load_file(data_path, tagstream_path)
 
 
+class GCN(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = GCNConv(FEATURES, 32)
+        self.conv2 = GCNConv(32, GESTURES)
+
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+
+        x = self.conv1(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv2(x, edge_index)
+
+        return F.log_softmax(x, dim=1)
+
+
 def main():
     all = list(examples(Path('MicrosoftGestureDataset-RC/data')))
     Ts = list(map(lambda triplet: torch.tensor(triplet[0]), all))
     Xs = list(map(lambda triplet: torch.tensor(triplet[1]), all))
     ys = list(map(lambda triplet: torch.tensor(triplet[2]), all))
 
+    Xs = list(map(lambda x: x.reshape(
+        (x.shape[0]*x.shape[1], x.shape[2])), Xs))
+
     X = torch.stack(Xs)
     y = torch.stack(ys)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=42)
+    mean = X.mean(dim=0, keepdim=True)
+    std = X.std(dim=0, keepdim=True)
+    # add small constant to avoid division by zero
+    X = (X - mean) / (std + 1e-6)
 
-    a = graph.get_A(WINDOW)
-    lap = scipy.sparse.csgraph.laplacian(a, normed=True)
+    X = X[:50]
+    y = y[:50]
+
+    # X_train, X_test, y_train, y_test = train_test_split(
+    #     X, y, test_size=0.3, random_state=42)
+
+    a = torch.tensor(graph.get_A(WINDOW))
+    # lap = scipy.sparse.csgraph.laplacian(a, normed=True)
+
+    edge_index = a.nonzero().t().contiguous()
+
+    data = Data(x=X.float(), y=y.long(), edge_index=edge_index.long())
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = GCN().to(device)
+    data = data.to(device)
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=0.01, weight_decay=5e-4)
+    model.train()
+
+    for epoch in range(200):
+        optimizer.zero_grad()
+        out = model(data)
+        loss = F.nll_loss(out, data.y)
+        loss.backward()
+        optimizer.step()
+
+    graph_pred = torch.mean(out, dim=1)
+    predicted_class = graph_pred.argmax(dim=-1)
+
     IPython.embed()
 
 
