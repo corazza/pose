@@ -18,7 +18,7 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.nn import global_mean_pool
 from torch_geometric.nn import aggr
 
-from const import *
+import const
 
 
 def to_gesture_id(gesture: str) -> int:
@@ -48,7 +48,7 @@ def load_datapoints(path: Path) -> Tuple[np.ndarray, np.ndarray]:
         keep_cols = np.ones(X.shape[1], dtype=bool)
         keep_cols[3::4] = False
         X = X[:, keep_cols]
-        X = X.reshape(X.shape[0], -1, FEATURES)
+        X = X.reshape(X.shape[0], -1, const.FEATURES)
         return timestamps.reshape((timestamps.shape[0])), X
 
 
@@ -65,7 +65,7 @@ def load_tagstream(path: Path) -> np.ndarray:
 
 
 def tagstream_to_y(timestamps: np.ndarray, X: np.ndarray, tagstream: np.ndarray) -> np.ndarray:
-    Y = np.zeros((X.shape[0], GESTURES))
+    Y = np.zeros((X.shape[0], const.GESTURES))
     for row in tagstream:
         timestamp, gi = row
         frame = np.argmin(np.abs(timestamps[:] - timestamp))
@@ -82,7 +82,7 @@ def split(timestamps: np.ndarray, X: np.ndarray, Y: np.ndarray) -> list[Tuple[np
     # distances = [abs(row_indices[i+1] - row_indices[i])
     #              for i in range(len(row_indices)-1)]
     # min_cover = min(distances)/2
-    min_cover = int(WINDOW/2)
+    min_cover = int(const.WINDOW/2)
     Xs = []
     Ys = []
     Ts = []
@@ -123,11 +123,11 @@ def examples(dir: Path) -> Generator[Tuple[np.ndarray, np.ndarray, np.ndarray], 
 class GCN(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = GCNConv(FEATURES, 32)
+        self.conv1 = GCNConv(const.FEATURES, 32)
         self.conv2 = GCNConv(32, 32)
-        self.fc1 = torch.nn.Linear(32, 16)
-        self.fc2 = torch.nn.Linear(16, GESTURES)
         self.sum_aggr = aggr.MeanAggregation()
+        self.fc1 = torch.nn.Linear(32, 16)
+        self.fc2 = torch.nn.Linear(16, const.GESTURES)
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
@@ -144,10 +144,15 @@ class GCN(torch.nn.Module):
         return F.log_softmax(x, dim=1)
 
 
+def save(path, model):
+    print(f'saving model to {path.resolve()}')
+    torch.save(model.state_dict(), path)
+
+
 def main():
-    torch.manual_seed(42)
-    save_path = Path('ASDFmodel')
-    a = torch.tensor(graph.get_A(WINDOW))
+    torch.manual_seed(const.SEED)
+    save_path = Path('ASDF.pytorchmodel')
+    a = torch.tensor(graph.get_A(const.WINDOW))
     edge_index = a.nonzero().t().contiguous()
 
     all = list(examples(Path('MicrosoftGestureDataset-RC/data')))
@@ -173,15 +178,17 @@ def main():
     train_dataset, test_dataset = torch.utils.data.random_split(
         data_list, [train_size, test_size])
 
-    loader = DataLoader(train_dataset, batch_size=BATCH_SIZE)
-    val_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE)
+    loader = DataLoader(train_dataset, batch_size=const.BATCH_SIZE)
+    val_loader = DataLoader(test_dataset, batch_size=const.BATCH_SIZE)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = GCN().to(device)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=0.01, weight_decay=5e-4)
 
-    for epoch in range(200):
+    print(f'running for {const.EPOCHS} epochs')
+
+    for epoch in range(const.EPOCHS):
         model.train()
         for batch in loader:
             batch.to(device)
@@ -201,11 +208,12 @@ def main():
                 losses.append(val_loss.item())
         avg_loss = sum(losses)/len(losses)
 
-        print(f'avg_loss={avg_loss}, epoch={epoch+1}')
+        print(f'avg_loss={avg_loss}, epoch={epoch+1}/{const.EPOCHS}')
 
-        if (epoch+1) % 10 == 0:
-            print(f'saving model to {save_path.resolve()}')
-            torch.save(model.state_dict(), save_path)
+        if (epoch+1) % const.SAVE_EVERY == 0:
+            save(save_path, model)
+
+    save(save_path, model)
 
 
 if __name__ == '__main__':
